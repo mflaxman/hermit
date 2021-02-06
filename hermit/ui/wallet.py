@@ -175,7 +175,7 @@ def wallet_help(
   learn more about each command):
 
   <b>SIGNING</b>
-        <i>sign-bitcoin</i>
+      <i>sign-bitcoin</i>
           Produce a signature for a Bitcoin transaction
       <i>sign-echo</i>
           Echo a signature request back as a signature
