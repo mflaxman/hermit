@@ -1,6 +1,7 @@
 from re import match
 from typing import Tuple
 
+from buidl import HDPrivateKey, HDPublicKey
 from mnemonic import Mnemonic
 
 from hermit import shards
@@ -26,7 +27,7 @@ def _hardened(id: int) -> int:
 
 
 def _decode_segment(segment: str) -> int:
-    if segment.endswith("'"):
+    if segment.endswith("'") or segment.lower().endswith("h"):
         return _hardened(int(segment[:-1]))
     else:
         return int(segment)
@@ -53,8 +54,9 @@ class HDWallet(object):
     reconstructed by unlocking a sufficient set of shards.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, testnet=False) -> None:
         self.root_priv = None
+        self.testnet = testnet
         self.shards = shards.ShardSet()
         self.language = "english"
 
@@ -71,7 +73,7 @@ class HDWallet(object):
         words = self.shards.wallet_words()
         if mnemonic.check(words):
             seed = Mnemonic.to_seed(words, passphrase=passphrase)
-            self.root_priv = bip32_master_key(seed)
+            self.root_priv = HDPrivateKey.from_seed(seed, testnet=self.testnet).xprv()
         else:
             raise HermitError("Wallet words failed checksum.")
 
@@ -81,15 +83,16 @@ class HDWallet(object):
     def extended_public_key(self, bip32_path: str) -> str:
         self.unlock()
         xprv = self.extended_private_key(bip32_path)
-        return bip32_privtopub(xprv)
+        # FIXME: allow passing in of SLIP132 version byte here? Going with default xpub for now
+        return HDPrivateKey.parse(xprv).xpub()
 
     def public_key(self, bip32_path: str) -> str:
+        # TODO: does this have a use-case or should it be tossed?
         xpub = self.extended_public_key(bip32_path)
-        return bip32_extract_key(xpub)
+        return HDPublicKey.parse(xpub).hash160().hex()
 
     def extended_private_key(self, bip32_path: str) -> str:
         self.unlock()
         xprv = self.root_priv
-        for child_id in bip32_sequence(bip32_path):
-            xprv = bip32_ckd(xprv, child_id)
-        return str(xprv)
+        hd_obj = HDPrivateKey.parse(xprv)
+        return hd_obj.traverse(path=bip32_path).xprv()
