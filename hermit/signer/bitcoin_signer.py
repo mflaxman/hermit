@@ -5,12 +5,9 @@ from typing import Dict
 
 from bitcoin import SelectParams
 from bitcoin import base58, bech32
-from bitcoin.core import COutPoint, CMutableTxOut, CMutableTxIn, CTransaction
+from bitcoin.core import COutPoint, CMutableTxOut, CMutableTxIn, CTransaction, x, lx
 from bitcoin.core.script import SignatureHash, SIGHASH_ALL, CScript
-from bitcoin.wallet import (CBitcoinAddress,
-                            CBitcoinAddressError,
-                            P2SHBitcoinAddress)
-import bitcoin
+from buidl.script import P2SHScriptPubKey
 import ecdsa
 
 from hermit.errors import InvalidSignatureRequest
@@ -31,14 +28,7 @@ def generate_multisig_address(redeemscript: str, testnet: bool = False) -> str:
         TODO
     """
 
-    if testnet:
-        bitcoin.SelectParams('testnet')
-
-    redeem_script = CScript(bitcoin.core.x(redeemscript))
-
-    addr = P2SHBitcoinAddress.from_redeemScript(redeem_script)
-
-    return str(addr)
+    return P2SHScriptPubKey(ScriptPubKey=redeemscript).address(testnet=testnet)
 
 
 class BitcoinSigner(Signer):
@@ -192,8 +182,9 @@ class BitcoinSigner(Signer):
                 err_msg = "invalid output address checksum"
                 raise InvalidSignatureRequest(err_msg)
         try:
-            CBitcoinAddress(output['address'])
-        except CBitcoinAddressError:
+            # FIXME: validate address and handle error
+            print("Not validating", (output['address']))
+        except:
             err_msg = "invalid output address (check mainnet vs. testnet)"
             raise InvalidSignatureRequest(err_msg)
 
@@ -277,9 +268,9 @@ class BitcoinSigner(Signer):
         parsed_redeem_scripts = {}
         for input in self.inputs:
             if input['redeem_script'] not in parsed_redeem_scripts:
-                parsed_redeem_scripts[input['redeem_script']] = CScript(bitcoin.core.x(input['redeem_script']))
+                parsed_redeem_scripts[input['redeem_script']] = CScript(x(input['redeem_script']))
 
-            txid = bitcoin.core.lx(input['txid'])
+            txid = lx(input['txid'])
             vout = input['index']
             tx_inputs.append(CMutableTxIn(COutPoint(txid, vout)))
 
@@ -287,8 +278,8 @@ class BitcoinSigner(Signer):
         tx_outputs = []
 
         for output in self.outputs:
-            output_script = (CBitcoinAddress(output['address'])
-                             .to_scriptPubKey())
+            # FIXME: this line intentionally broken
+            output_script = output['address'].to_scriptPubKey()
             tx_outputs.append(CMutableTxOut(output['amount'], output_script))
 
         # Construct Transaction
