@@ -3,7 +3,8 @@ from collections import defaultdict
 from hashlib import sha256
 from typing import Dict
 
-from bitcoin import SelectParams
+from buidl.helper import decode_base58
+
 from bitcoin import base58, bech32
 from bitcoin.core import COutPoint, CMutableTxOut, CMutableTxIn, CTransaction, x, lx
 from bitcoin.core.script import SignatureHash, SIGHASH_ALL, CScript
@@ -28,7 +29,9 @@ def generate_multisig_address(redeemscript: str, testnet: bool = False) -> str:
         TODO
     """
 
-    return P2SHScriptPubKey(ScriptPubKey=redeemscript).address(testnet=testnet)
+    h160 = bytes.fromhex(redeemscript)
+
+    return P2SHScriptPubKey(h160).address(testnet=testnet)
 
 
 class BitcoinSigner(Signer):
@@ -80,10 +83,6 @@ class BitcoinSigner(Signer):
         * inputs & outputs
         * fee
         """
-        if self.testnet:
-            SelectParams('testnet')
-        else:
-            SelectParams('mainnet')
         self._validate_input_groups()
         self._validate_outputs()
         self._validate_fee()
@@ -258,17 +257,13 @@ class BitcoinSigner(Signer):
         """Signs a given transaction"""
         # Keys are derived in base.py
 
-        if self.testnet:
-            SelectParams('testnet')
-        else:
-            SelectParams('mainnet')
-
         # Construct Inputs
         tx_inputs = []
         parsed_redeem_scripts = {}
         for input in self.inputs:
             if input['redeem_script'] not in parsed_redeem_scripts:
-                parsed_redeem_scripts[input['redeem_script']] = CScript(x(input['redeem_script']))
+                parsed_redeem_scripts[input['redeem_script']] = TxIn
+                CScript(x(input['redeem_script']))
 
             txid = lx(input['txid'])
             vout = input['index']
@@ -278,8 +273,11 @@ class BitcoinSigner(Signer):
         tx_outputs = []
 
         for output in self.outputs:
-            # FIXME: this line intentionally broken
-            output_script = output['address'].to_scriptPubKey()
+            print("address", output['address'])
+            decoded_address = decode_base58(output['address'])
+            print("decoded_address", decoded_address)
+            output_script = P2SHScriptPubKey(decoded_address).serialize()
+            print("output_script", output_script)
             tx_outputs.append(CMutableTxOut(output['amount'], output_script))
 
         # Construct Transaction
