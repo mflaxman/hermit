@@ -56,6 +56,7 @@ class HDWallet(object):
 
     def __init__(self, testnet=False) -> None:
         self.root_priv = None
+        self.xfp_hex = None  # root fingerprint in hex
         self.testnet = testnet
         self.shards = shards.ShardSet()
         self.language = "english"
@@ -73,9 +74,12 @@ class HDWallet(object):
         words = self.shards.wallet_words()
         if mnemonic.check(words):
             seed = Mnemonic.to_seed(words, passphrase=passphrase)
-            self.root_priv = HDPrivateKey.from_seed(seed, testnet=self.testnet).xprv()
+            hd_obj = HDPrivateKey.from_seed(seed, testnet=self.testnet)
+            self.root_priv = hd_obj.xprv()
+            self.xfp_hex = hd_obj.fingerprint().hex()  # this will be later needed to identify us as a signer
         else:
             raise HermitError("Wallet words failed checksum.")
+
 
     def lock(self) -> None:
         self.root_priv = None

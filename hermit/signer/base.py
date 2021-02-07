@@ -4,6 +4,8 @@ from typing import Optional, Dict
 
 from prompt_toolkit import PromptSession, print_formatted_text, HTML
 
+from buidl import PSBT
+
 import hermit
 from hermit.errors import HermitError, InvalidSignatureRequest
 from hermit.qrcode import reader, displayer
@@ -37,11 +39,11 @@ class Signer(object):
     BIP32_PATH_REGEX = "^m(/[0-9]+'?)+$"
     BIP32_NODE_MAX_VALUE = 2147483647
 
-    def __init__(self, signing_wallet: HDWallet, session: PromptSession = None) -> None:
+    def __init__(self, signing_wallet: HDWallet, session: PromptSession = None, psbt_b64: str = None) -> None:
         self.wallet = signing_wallet
         self.session = session
         self.signature: Optional[Dict] = None
-        self.request_data: Optional[str] = None
+        self.psbt_b64: Optional[str] = psbt_b64
 
     def sign(self, testnet: bool = False) -> None:
         """Initiate signing.
@@ -50,9 +52,12 @@ class Signer(object):
         confirmation, generation, and display of a signature.
         """
 
+        # FIXME: change all _request names (wait_for*, _parse*, validate*, etc) to something sensical
         self.testnet = testnet
-        self._wait_for_request()
-        if self.request_data:
+        if not self.psbt_b64:
+            # Allow passing through signing request as an argument
+            self._wait_for_request()
+        if self.psbt_b64:
             self._parse_request()
             self.validate_request()
             if self._confirm_create_signature():
@@ -142,19 +147,20 @@ class Signer(object):
         )
 
     def _wait_for_request(self) -> None:
-        self.request_data = reader.read_qr_code()
+        self.psbt_b64 = reader.read_qr_code()
 
     def _parse_request(self) -> None:
-        if self.request_data is not None:
-            try:
-                self.request = json.loads(self.request_data)
-            except ValueError as e:
-                err_msg = "Invalid signature request: {} ({})".format(
-                    e, type(e).__name__
-                )
-                raise HermitError(err_msg)
-        else:
-            raise HermitError("No Request Data")
+        if self.psbt_b64 is None:
+            raise HermitError("No PSBT Supplied")
+
+            
+        try:
+            self.psbt_obj = PSBT.parse_base64(self.psbt_b64, testnet=self.testnet)
+        except Exception as e:
+            err_msg = "Invalid PSBT: {} ({})".format(
+                e, type(e).__name__
+            )
+            raise HermitError(err_msg)
 
     def _confirm_create_signature(self) -> bool:
         self.display_request()

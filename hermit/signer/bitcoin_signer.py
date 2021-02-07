@@ -4,28 +4,30 @@ from hashlib import sha256
 from typing import Dict
 
 from buidl.helper import decode_base58
+from buidl.psbt import PSBTIn, PSBTOut
+from buidl.script import P2WSHScriptPubKey
 
 from hermit.errors import InvalidSignatureRequest
 from hermit.signer.base import Signer, print_formatted_text, HTML
 
 
-def generate_multisig_address(redeemscript: str, testnet: bool = False) -> str:
+def generate_multisig_address(witnessscript: str, testnet: bool = False) -> str:
     """
-    Generates a P2SH-multisig Bitcoin address from a redeem script
+    Generates a P2WSH-multisig Bitcoin address from a witness script
 
     Args:
-        redeemscript: hex-encoded redeem script
-                      use generate_multisig_redeem_script to create
-                      the redeem script from three compressed public keys
+        witnessscript: hex-encoded witness script
+                      use generate_multisig_witness_script to create
+                      the witness script from three compressed public keys
          testnet: Should the address be testnet or mainnet?
 
     Example:
         TODO
     """
 
-    h160 = bytes.fromhex(redeemscript)
+    h160 = bytes.fromhex(witnessscript)
 
-    return P2SHScriptPubKey(h160).address(testnet=testnet)
+    return P2WSHScriptPubKey(h160).address(testnet=testnet)
 
 
 class BitcoinSigner(Signer):
@@ -37,7 +39,7 @@ class BitcoinSigner(Signer):
 
           "inputs": [
             [
-              REDEEM_SCRIPT,
+              WITNESS_SCRIPT,
               BIP32_PATH,
               {
                 "txid": TXID,
@@ -73,42 +75,59 @@ class BitcoinSigner(Signer):
 
         Validates
 
-        * the redeem script
+        * the witness script
         * inputs & outputs
         * fee
         """
+        if self.psbt_obj.validate() is not True:
+            raise HermitError("Invalid PSBT")
+
         self._validate_input_groups()
         self._validate_outputs()
         self._validate_fee()
 
     def _validate_input_groups(self) -> None:
-        if "inputs" not in self.request:
-            raise InvalidSignatureRequest("no input groups")
-        input_groups = self.request["inputs"]
-        if not isinstance(input_groups, list):
-            raise InvalidSignatureRequest("input groups is not an array")
-        if len(input_groups) == 0:
-            raise InvalidSignatureRequest("at least one input group is required")
+        if not hasattr(self.psbt_obj, 'psbt_ins'):
+            raise InvalidSignatureRequest("no inputs")
+        psbt_ins = self.psbt_obj.psbt_ins
+        if not isinstance(psbt_ins, list):
+            raise InvalidSignatureRequest("psbt_inputs is not an array")
+        if len(psbt_ins) == 0:
+            raise InvalidSignatureRequest("at least one input in the PSBT is required")
         self.inputs = []
-        for input_group in input_groups:
-            self._validate_input_group(input_group)
+        for psbt_in in psbt_ins:
+            self._validate_input_group(psbt_in)
 
-    def _validate_input_group(self, input_group: list) -> None:
-        if len(input_group) < 3:
+    def _validate_input_group(self, psbt_in: PSBTIn) -> None:
+        # TODO: add support for legacy RedeemScript?
+        witness_script = psbt_in.witness_script.serialize().hex()
+        if witness_script is None:
             raise InvalidSignatureRequest(
-                "input group must include redeem script, BIP32 path, and at least one input"
+                "input group must include witness script"
             )
-        redeem_script = input_group[0]
-        self._validate_redeem_script(redeem_script)
-        bip32_path = input_group[1]
+        self._validate_witness_script(witness_script)
+        # Find bip32 path for the key that hermit protects via fingerprint
+        bip32_path = None
+        root_xfp_hexes = set({})
+        for named_pub in psbt_in.named_pubs.values():
+            if named_pub.root_fingerprint.hex() == self.wallet.xfp_hex:
+                bip32_path = named_pub.root_path
+            # not strictly neccesary, using this for a helpful error message below
+            root_xfp_hexes.add(named_pub.root_fingerprint.hex())
+
+        if bip32_path is None:
+            raise InvalidSignatureRequest(f"BIP32 signing path for fingerprint {self.wallet.xfp_hex} not a fingerprint in this input:\n\t{root_xfp_hexes}")
+
         self.validate_bip32_path(bip32_path)
-        address = generate_multisig_address(redeem_script, self.testnet)
-        for input in input_group[2:]:
-            self._validate_input(input)
-            input["redeem_script"] = redeem_script
-            input["bip32_path"] = bip32_path
-            input["address"] = address
-            self.inputs.append(input)
+        address = generate_multisig_address(witness_script, self.testnet)
+        if False:
+            # FIXME
+            for inp in input_group[2:]:
+                self._validate_input(inp)
+                inp["witness_script"] = witness_script
+                inp["bip32_path"] = bip32_path
+                inp["address"] = address
+                self.inputs.append(input)
 
     def _validate_input(self, input: Dict) -> None:
         if "amount" not in input:
@@ -137,24 +156,24 @@ class BitcoinSigner(Signer):
         if input["index"] < 0:
             raise InvalidSignatureRequest("invalid input index")
 
-    def _validate_redeem_script(self, redeem_script: bytes) -> None:
+    def _validate_witness_script(self, witness_script: bytes) -> None:
         try:
-            binascii.unhexlify(redeem_script.encode("utf8"))
+            binascii.unhexlify(witness_script.encode("utf8"))
         except (ValueError, AttributeError):
-            raise InvalidSignatureRequest("redeem script is not valid hex")
+            raise InvalidSignatureRequest("witness script is not valid hex")
 
     def _validate_outputs(self) -> None:
-        if "outputs" not in self.request:
+        if not hasattr(self.psbt_obj, 'psbt_outs'):
             raise InvalidSignatureRequest("no outputs")
-        self.outputs = self.request["outputs"]
-        if not isinstance(self.outputs, list):
+        psbt_outs = self.psbt_obj.psbt_outs
+        if not isinstance(psbt_outs, list):
             raise InvalidSignatureRequest("outputs is not an array")
-        if len(self.outputs) == 0:
+        if len(psbt_outs) == 0:
             raise InvalidSignatureRequest("at least one output is required")
-        for output in self.outputs:
-            self._validate_output(output)
+        for psbt_out in psbt_outs:
+            self._validate_output(psbt_out)
 
-    def _validate_output(self, output: Dict) -> None:
+    def _validate_output(self, psbt_out: PSBTOut) -> None:
         if "address" not in output:
             raise InvalidSignatureRequest("no address in output")
         if not isinstance(output["address"], (str,)):
@@ -262,11 +281,11 @@ class BitcoinSigner(Signer):
 
         # Construct Inputs
         tx_inputs = []
-        parsed_redeem_scripts = {}
+        parsed_witness_scripts = {}
         for input in self.inputs:
-            if input["redeem_script"] not in parsed_redeem_scripts:
-                parsed_redeem_scripts[input["redeem_script"]] = TxIn
-                CScript(x(input["redeem_script"]))
+            if input["witness_script"] not in parsed_witness_scripts:
+                parsed_witness_scripts[input["witness_script"]] = TxIn
+                CScript(x(input["witness_script"]))
 
             txid = lx(input["txid"])
             vout = input["index"]
@@ -290,13 +309,13 @@ class BitcoinSigner(Signer):
         signature_hashes = []
         keys = {}
         for input_index, input in enumerate(self.inputs):
-            redeem_script = input["redeem_script"]
+            witness_script = input["witness_script"]
             bip32_path = input["bip32_path"]
 
             # Signature Hash
             signature_hashes.append(
                 SignatureHash(
-                    parsed_redeem_scripts[redeem_script], tx, input_index, SIGHASH_ALL
+                    parsed_witness_scripts[witness_script], tx, input_index, SIGHASH_ALL
                 )
             )
 
