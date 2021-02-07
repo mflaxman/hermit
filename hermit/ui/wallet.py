@@ -1,7 +1,7 @@
 from prompt_toolkit import print_formatted_text
 from json import dumps
 
-from hermit.signer import BitcoinSigner, EchoSigner
+from hermit.signer import BitcoinSigner
 
 from .base import *
 from .repl import repl
@@ -56,9 +56,7 @@ def sign_bitcoin(psbt_b64):
     Creating a signature requires unlocking the wallet.
 
     """
-    print('one')
     BitcoinSigner(state.Wallet, state.Session, psbt_b64=psbt_b64).sign(testnet=state.Testnet)
-    print('two')
 
 
 @wallet_command("export-xpub")
