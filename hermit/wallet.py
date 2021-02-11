@@ -44,16 +44,9 @@ class HDWallet(object):
 
     def extended_public_key(self, bip32_path: str) -> str:
         self.unlock()
-        xprv = self.extended_private_key(bip32_path)
         # TODO: do we want to allow passing in SLIP132 version byte (ypub/zpub)?
         # Going with default xpub ONLY for now
-        return HDPrivateKey.parse(xprv).xpub()
-
-    def extended_private_key(self, bip32_path: str) -> str:
-        self.unlock()
-        xprv = self.root_xpriv
-        hd_obj = HDPrivateKey.parse(xprv)
-        return hd_obj.traverse(path=bip32_path).xprv()
+        return HDPrivateKey.parse(self.root_xpriv).traverse(path=bip32_path).xpub()
 
     def get_child_private_key_objs(self, bip32_paths):
         """
