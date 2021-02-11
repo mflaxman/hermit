@@ -10,7 +10,7 @@ attrs==20.3.0             # via pytest
 babel==2.9.0              # via sphinx
 bleach==3.3.0             # via readme-renderer
 bson==0.5.8               # via -r requirements.in
-buidl==0.2.7              # via -r requirements.in
+-e git+https://github.com/buidl-bitcoin/buidl-python.git@multisig-wallet#egg=foo
 certifi==2020.12.5        # via requests
 cffi==1.14.4              # via cryptography
 chardet==4.0.0            # via requests

@@ -38,7 +38,7 @@ def echo():
 
 
 @wallet_command("sign-bitcoin")
-def sign_bitcoin(psbt_b64):
+def sign_bitcoin(unsigned_psbt_b64):
     """usage:  sign-bitcoin
 
     Create a signature for a Bitcoin transaction.
@@ -56,7 +56,7 @@ def sign_bitcoin(psbt_b64):
     Creating a signature requires unlocking the wallet.
 
     """
-    BitcoinSigner(state.Wallet, state.Session, psbt_b64=psbt_b64).sign(testnet=state.Testnet)
+    BitcoinSigner(state.Wallet, state.Session, unsigned_psbt_b64=unsigned_psbt_b64).sign(testnet=state.Testnet)
 
 
 @wallet_command("export-xpub")
