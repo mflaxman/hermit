@@ -1,10 +1,58 @@
 from buidl import HDPrivateKey, HDPublicKey
 from mnemonic import Mnemonic
 
+from pybitcointools import (
+    bip32_ckd,
+    bip32_privtopub,
+    bip32_master_key,
+    bip32_deserialize,
+    bip32_extract_key,
+)
+
 from hermit import shards
 from hermit.errors import HermitError
 
 
+def compressed_private_key_from_bip32(bip32_xkey: str) -> bytes:
+    """Return a compressed private key from the given BIP32 path"""
+    bip32_args = bip32_deserialize(bip32_xkey)
+    # cut off 'compressed' byte flag (only for private key!)
+    return bip32_args[5][:-1]
+
+
+def compressed_public_key_from_bip32(bip32_xkey: str) -> bytes:
+    """Return a compressed public key from the given BIP32 path"""
+    bip32_args = bip32_deserialize(bip32_xkey)
+    return bip32_args[5]
+
+
+def _hardened(id: int) -> int:
+    hardening_offset = 2 ** 31
+    return hardening_offset + id
+
+
+def _decode_segment(segment: str) -> int:
+    if segment.endswith("'"):
+        return _hardened(int(segment[:-1]))
+    else:
+        return int(segment)
+
+
+def bip32_sequence(bip32_path: str) -> Tuple[int, ...]:
+    """Turn a BIP32 path into a tuple of deriviation points"""
+    bip32_path_regex = "^m(/[0-9]+'?)+$"
+
+    if not match(bip32_path_regex, bip32_path):
+        raise HermitError("Not a valid BIP32 path.")
+
+    return tuple(
+        _decode_segment(segment)
+        for segment in bip32_path[2:].split("/")
+        if len(segment) != 0
+    )
+
+
+>>>>>>> master-black
 class HDWallet(object):
     """Represents a hierarchical deterministic (HD) wallet
 
