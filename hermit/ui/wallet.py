@@ -38,13 +38,13 @@ def echo():
 
 
 @wallet_command("sign-bitcoin")
-def sign_bitcoin(unsigned_psbt_b64):
+def sign_bitcoin(unsigned_psbt_b64=None):
     """usage:  sign-bitcoin
 
     Create a signature for a Bitcoin transaction.
 
-    Hermit will open a QR code reader window and wait for you to scan a
-    Bitcoin transaction signature request.
+    Can pass in the PSBT via CLI or Hermit will open a QR code reader window and wait for you to scan a Bitcoin transaction signature request.
+    TODO: support for QR GIFs.
 
     Once scanned, the details of the signature request will be displayed
     on screen and you will be prompted whether or not you want to sign

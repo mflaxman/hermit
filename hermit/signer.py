@@ -32,7 +32,6 @@ class BitcoinSigner(object):
         self.wallet = signing_wallet
         self.session = session
         self.unsigned_psbt_b64: Optional[str] = unsigned_psbt_b64
-        self.psbt_is_signed = False  # TODO: add validation that we haven't inputted an already signed PSBT (no reason to do this)
 
     def sign(self, testnet: bool = False) -> None:
         """Initiate signing.
@@ -41,23 +40,22 @@ class BitcoinSigner(object):
         confirmation, generation, and display of a signature.
         """
 
-        # FIXME: change all _request names (wait_for*, _parse*, validate*, etc) to something sensical
         self.testnet = testnet
         if not self.unsigned_psbt_b64:
-            # Allow passing through signing request as an argument
-            self._wait_for_request()
+            # Allow scanning PSBT via webcam if not already passed in as an argument
+            self._wait_for_qrscan()
         if self.unsigned_psbt_b64:
-            self._parse_request()
-            self.validate_request()
+            self.parse_psbt()
+            self.validate_psbt()
             self.display_request()
             if self._confirm_create_signature():
                 self.create_signature()
                 self._show_signature()
 
-    def _wait_for_request(self) -> None:
+    def _wait_for_qrscan(self) -> None:
         self.unsigned_psbt_b64 = reader.read_qr_code()
 
-    def _parse_request(self) -> None:
+    def parse_psbt(self) -> None:
         if self.unsigned_psbt_b64 is None:
             raise HermitError("No PSBT Supplied")
 
@@ -79,7 +77,7 @@ class BitcoinSigner(object):
 
         return response.strip().lower().startswith("y")
 
-    def validate_request(self) -> None:
+    def validate_psbt(self) -> None:
         if self.psbt_obj.validate() is not True:
             raise HermitError("Invalid PSBT")
 
@@ -118,8 +116,8 @@ class BitcoinSigner(object):
 
         child_private_keys_to_use = self.wallet.get_child_private_key_objs(bip32_paths=self.tx_description['root_paths'])
 
-        self.is_signed = self.psbt_obj.sign_with_private_keys(private_keys=child_private_keys_to_use)
-        if self.is_signed is False:
+        was_signed = self.psbt_obj.sign_with_private_keys(private_keys=child_private_keys_to_use)
+        if was_signed is False:
             raise HermitError("Failed to Sign Transaction")
 
         self.signed_psbt_b64 = self.psbt_obj.serialize_base64()
